@@ -33,69 +33,45 @@ from collections import Counter
 #out_dir=sys.argv[3]
 
 
-
-
-filter_genes="../GENES_INTEREST.txt"
-
-
-
-print "for Seurat1"
-
-#in_folder="../Seurat_Diff/"
-#cluster_info="../../exported_clusters_without_lowseq_outliers_207.csv" # seurat 1
-#out_dir="./207/"
-
-#print "-option 1"
-#preffix="Seurat1_"
-#normalised_count="../deSeq_normalized.txt" # seurat 1
-
-#print "-option 2"
-#preffix="Seurat1_CPM_"
-#normalised_count=out_dir+"logcountsCPM_normalisation.txt" # seurat 1
-
-
-
-
-
-
-
 print "for Seurat2"
 
 in_folder="./"
+samples2exlude=['MCD4899_A37','MCD4899_A50','MCD4899_A73','MCD4899_A72','MCD4899_A14','MCD4899_A206','MCD4899_A26','MCD4899_A54']
 cluster_info="./exported_clusters_without_lowseq_outliers_199.csv" # seurat 2
 out_dir="./"
+
 #
 #print "-option 1"
 #preffix="Seurat2_"
-#normalised_count="./C_vs_VT_199/DiffExpr/DeSeq/deSeq_normalized.txt" # seurat 2
+#normalised_count="../../C_vs_VT_207/DiffExpr/DeSeq/deSeq_normalized.txt" # seurat 2
 #
 #print "-option 2"
 #preffix="Seurat2_CPM_"
-#normalised_count="./logcountsCPM_normalisation_199.txt" # seurat 2
+#normalised_count="./207/logcountsCPM_normalisation.txt" # seurat 2
 
 print "-option 3"
 preffix="Seurat2_Scran_"
-normalised_count="./Scran_normalisation.txt" # seurat 2
-
-
-
-
-
-
+normalised_count="./207/Scran_normalisation_size30.txt" # seurat 2
 
 print "Renaming columns from normalised data..."
 
 clusters_ali= pd.read_csv(cluster_info, sep=",", header = 0 , low_memory=False)    
+normal_genes= pd.read_csv(normalised_count, sep="\t", header = 0 , low_memory=False)    
+
+print "Filtering out 8 samples..."
+normal_genes_transp=normal_genes.transpose()
+normal_genes_transp=normal_genes_transp[normal_genes_transp.index.isin(clusters_ali['Unnamed: 0'])]
+
+print "Updating matrix of normalised data..."
+normal_genes=normal_genes_transp.transpose()
+
+print "Renaming columns (samples) of matrix..."
 clusters_ali['Unnamed: 0']=clusters_ali['Unnamed: 0'].apply(lambda x: x.split(".")[3])
 clusters_ali['x']=map(str,list(clusters_ali['x']))
 clusters_ali['x']="c_"+clusters_ali['x']
 
-normal_genes= pd.read_csv(normalised_count, sep="\t", header = 0 , low_memory=False)    
-#subprocess.call("cp ../deSeq_normalized.txt ./new_heatmap/", shell=True)     
 normal_genes.columns=list(clusters_ali['Unnamed: 0'])
-
-#cmd="cp exported_clusters_without_lowseq_outliers_207.csv ./new_heatmap/"
-#subprocess.call(cmd, shell=True)     
+   
 
     
 seurat_genes=['0_1','0_2','0_3','1_2','1_3','2_3']
@@ -167,5 +143,8 @@ for FC_thr in [1.5]:
 #expression_heatmap=normal_genes[normal_genes.index.isin(total_diffexp_genes['Unnamed: 0'])] 
 #expression_heatmap.columns=list(clusters_ali['x'])
 #expression_heatmap.to_csv(out_dir+"Lisa_heatmap_only_diffExp_GENES_INTEREST",index=True,header=True,sep='\t')              
+
+
+
 
 
