@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Jul 20 14:36:56 2018
-Before: Heatmap generated from normalised data of 199 cells
-After: Heatmap generated from normalised data of 207 samples. HThen, 8 samples wer eremoved manually.
-
-
-@author: diego
+Spyder Editor
+Analysis of THP sampels from brian_wilhem
+This is a temporary script file.
 """
+
+
+
+#from __future__ import print_function
 import sys
 from commands import *
 import os
@@ -24,128 +25,246 @@ from math import exp, expm1, log
 import subprocess
 import string
 import datetime
-from collections import Counter
+#import sqlite3 as lite
+import MySQLdb as my
 
 
+#def f_drop_mysql_table(f_table_id):    
+#    sql_cmd="""DROP TABLE *"""
+#    return (sql_cmd)    
 
-
-
-#out_dir=sys.argv[3]
-
-
-print "for Seurat2"
-
-in_folder="./"
-samples2exlude=['MCD4899_A37','MCD4899_A50','MCD4899_A73','MCD4899_A72','MCD4899_A14','MCD4899_A206','MCD4899_A26','MCD4899_A54']
-cluster_info="./exported_clusters_without_lowseq_outliers_199.csv" # seurat 2
-out_dir="./"
-
-
-for method in ['DeSeq','CPM','Scran']:
-    
-    print "Generating heatmap based on method: "+method
-    
-    
-    if method=='DeSeq':
-        print "Initialising variables for: "+method
-        preffix="Seurat2_DeSeq_"
-        normalised_count="../../C_vs_VT_207/DiffExpr/DeSeq/deSeq_normalized.txt" # seurat 2
-    elif method=='CPM':
-        preffix="Seurat2_CPM_"
-        normalised_count="./207/logcountsCPM_normalisation.txt" # seurat 2
-    else:
-        preffix="Seurat2_Scran_"
-        normalised_count="./207/Scran_normalisation_size30.txt" # seurat 2
-    
-    
+def f_create_mysql_table(f_table_id):    
+    if f_table_id in ['circexp','htseq','featurecount']:
+        sql_cmd="""CREATE TABLE `"""+f_table_id+"""` (
+          `Project_ID` varchar(100) DEFAULT NULL,
+          `Project_Type` varchar(100) DEFAULT NULL,
+          `Sample` varchar(100) DEFAULT NULL,
+          `File_name` varchar(100) NOT NULL,
+          `Location` varchar(512) NOT NULL,
+           PRIMARY KEY (`file_name`,`Location`)
+        )"""
+        print "Performing query: "+sql_cmd
         
-    print "Renaming columns from normalised data..."
-    
-    clusters_ali= pd.read_csv(cluster_info, sep=",", header = 0 , low_memory=False)    
-    normal_genes= pd.read_csv(normalised_count, sep="\t", header = 0 , low_memory=False)    
-    
-    print "Filtering out 8 samples..."
-    normal_genes_transp=normal_genes.transpose()
-    normal_genes_transp=normal_genes_transp[normal_genes_transp.index.isin(clusters_ali['Unnamed: 0'])]
-    
-    print "Updating matrix of normalised data..."
-    normal_genes=normal_genes_transp.transpose()
-    
-    print "Renaming columns (samples) of matrix..."
-    clusters_ali['Unnamed: 0']=clusters_ali['Unnamed: 0'].apply(lambda x: x.split(".")[3])
-    clusters_ali['x']=map(str,list(clusters_ali['x']))
-    clusters_ali['x']="c_"+clusters_ali['x']
-    
-    normal_genes.columns=list(clusters_ali['Unnamed: 0'])
-       
-    
+    elif f_table_id in ['chipseq','deseq']:
+        sql_cmd="""CREATE TABLE `"""+f_table_id+"""` (
+          `Project_ID` varchar(100) DEFAULT NULL,
+          `Project_Type` varchar(100) DEFAULT NULL,
+          `Sample` varchar(100) NOT NULL,
+          `Location` varchar(512) NOT NULL,
+           PRIMARY KEY (`Sample`,`Location`)
+        )"""
+        print "Performing query: "+sql_cmd
+     
+    elif f_table_id in ['raw_fastq']:
+        sql_cmd="""CREATE TABLE `"""+f_table_id+"""` (
+          `Project_ID` varchar(100) DEFAULT NULL,
+          `Project_Type` varchar(100) DEFAULT NULL,
+          `File_name` varchar(100) NOT NULL,
+          `Location` varchar(512) NOT NULL,
+           PRIMARY KEY (`file_name`,`Location`)
+        )"""
+        print "Performing query: "+sql_cmd
         
-    seurat_genes=['0_1','0_2','0_3','1_2','1_3','2_3']
-    
-    for i in range(len(seurat_genes)):
-        print str(i)
-        seurat_cluster= pd.read_csv(in_folder+"seurat_clusters_"+seurat_genes[i]+".csv", sep=",", header = 0 , low_memory=False)
-        #subprocess.call("cp ./Seurat_Diff/seurat_clusters_"+seurat_genes[i]+".csv ./new_heatmap/", shell=True)     
+    else: #bam and bwa alignment
+        sql_cmd="""CREATE TABLE `"""+f_table_id+"""` (
+          `Project_ID` varchar(100) DEFAULT NULL,
+          `Project_Type` varchar(100) DEFAULT NULL,
+          `Sample` varchar(100) NOT NULL,
+          `File_name` varchar(100) NOT NULL,
+          `Protocol` varchar(100) DEFAULT NULL,
+          `Algorithm` varchar(10) DEFAULT NULL,
+          `Location` varchar(512) NOT NULL,
+           PRIMARY KEY (`file_name`,`Location`)
+        )"""
+        print "Performing query: "+sql_cmd
         
-        seurat_cluster=seurat_cluster[['Unnamed: 0','p_val','avg_logFC','p_val_adj']]
-        seurat_cluster=seurat_cluster[seurat_cluster['p_val']<0.05]
-        seurat_cluster.rename(columns={'p_val': 'p_val_'+seurat_genes[i], 'avg_logFC': 'avg_logF_'+seurat_genes[i], 'p_val_adj': 'p_val_adj_'+seurat_genes[i]}, inplace=True)
-        
-        if i==0:
-            merge_table=seurat_cluster.copy()
-        else:
-            merge_table=pd.merge(merge_table,seurat_cluster,how="outer",on=['Unnamed: 0'])
+    return (sql_cmd)    
+
     
-    
-    #freq_genes=pd.DataFrame()
-    print "Defining the genes differentially expressed in at least one of the clusters..."
-    
-    #for FC_thr in [0,0.5,1,1.5,2,2.5,3]:
-    for FC_thr in [1.5]:
-        print "Generating heatmap for fold-change > "+str(FC_thr)    
-        merge_table_eval=merge_table[(merge_table['avg_logF_0_1'].abs()>FC_thr)|(merge_table['avg_logF_0_2'].abs()>FC_thr)|(merge_table['avg_logF_0_3'].abs()>FC_thr)|(merge_table['avg_logF_1_2'].abs()>FC_thr)|(merge_table['avg_logF_1_3'].abs()>FC_thr)|(merge_table['avg_logF_2_3'].abs()>FC_thr)].reset_index(drop=True)
-        
-        #merge_table_eval.fillna(-100, inplace=True)
-        diffExp_genes=merge_table_eval[['Unnamed: 0','avg_logF_0_1','p_val_0_1','avg_logF_0_2','p_val_0_2','avg_logF_0_3','p_val_0_3','avg_logF_1_2','p_val_1_2','avg_logF_1_3','p_val_1_3','avg_logF_2_3','p_val_2_3']]
-        diffExp_genes.to_csv(out_dir+preffix+"Lisa_DiffExp_Genes_clustering_"+str(FC_thr),index=False,header=True,sep='\t')              
-        
-        print "Getting normalised count matrix for differential expressed genes..."
-        expression_heatmap=normal_genes[normal_genes.index.isin(diffExp_genes['Unnamed: 0'])] 
-        print "Renaming columns using cluster assignation..."
-        expression_heatmap.columns=list(clusters_ali['x'])
-        print "Generating output..."
-        #normal_genes=DataFrame.transpose(normal_genes)
-        expression_heatmap.to_csv(out_dir+preffix+"Lisa_heatmap_"+str(FC_thr),index=True,header=True,sep='\t')              
-    
-#    
-#
-#print "2 PART: FILTERING NORMALISED DATA FROM GENES OF INTEREST..."
-#
-#clusters_ali= pd.read_csv(cluster_info, sep=",", header = 0 , low_memory=False)    
-#clusters_ali['Unnamed: 0']=clusters_ali['Unnamed: 0'].apply(lambda x: x.split(".")[3])
-#clusters_ali['x']=map(str,list(clusters_ali['x']))
-#clusters_ali['x']="c_"+clusters_ali['x']
-#
-#normal_genes= pd.read_csv(normalised_count, sep="\t", header = 0 , low_memory=False)    
-#normal_genes.columns=list(clusters_ali['Unnamed: 0'])
-#genes2filter= pd.read_csv("GENES_INTEREST.txt", sep="\t", header = 0 , low_memory=False)   
-#
-#
-#expression_heatmap=normal_genes[(normal_genes.index.isin(genes2filter['LIST1'])) | (normal_genes.index.isin(genes2filter['LIST2']))]
-#expression_heatmap.columns=list(clusters_ali['x'])
-#expression_heatmap.to_csv(out_dir+"Lisa_Expression_heatmap_FULL_GENES_INTEREST",index=True,header=True,sep='\t')              
-#
-#
-#print "3 PART: WHICH GENES FROM THE LIST OF INTERESET ARE DIFF EXPRESSED..."
-#total_diffexp_genes= pd.read_csv(out_dir+"Lisa_DiffExp_Genes_from_cluster_0", sep="\t", header = 0 , low_memory=False)    
-#
-#total_diffexp_genes=total_diffexp_genes[(total_diffexp_genes['Unnamed: 0'].isin(genes2filter['LIST1'])) |  (total_diffexp_genes['Unnamed: 0'].isin(genes2filter['LIST2']))]
-#total_diffexp_genes.to_csv(out_dir+"Lisa_DiffExp_GENES_INTEREST_0",index=False,header=True,sep='\t')              
-#
-#
-#
-#expression_heatmap=normal_genes[normal_genes.index.isin(total_diffexp_genes['Unnamed: 0'])] 
-#expression_heatmap.columns=list(clusters_ali['x'])
-#expression_heatmap.to_csv(out_dir+"Lisa_heatmap_only_diffExp_GENES_INTEREST",index=True,header=True,sep='\t')              
+def f_load_data_mysql(f_data):   
+    #sql_cmd="""LOAD DATA INFILE '~/estorage/data/chipseq.txt' 
+    table_name=f_data.split(".")[0]
+    sql_cmd="""LOAD DATA LOCAL INFILE '/home/dbeck/estorage/data/"""+f_data+"""' 
+    INTO TABLE """+table_name+""" 
+    FIELDS TERMINATED BY '\t'
+    LINES TERMINATED BY '\n'
+    IGNORE 1 LINES;"""
+    print "Performing query: "+sql_cmd
+    return (sql_cmd)    
 
 
+def f_project_id(path):
+    analysis_type=['star','circexplorer2','htseq','featurecount','bwa']
+    project_id=[]
+    for i in range(len(path)):
+        row=path['Project_Type'][i]
+        if row=="public" or path['location'][i].split('/')[2] in analysis_type:
+            project_id.append(path['location'][i].split('/')[1])    
+#        elif row=="labdata":
+#            project_id.append(path['location'][i].split('/')[1]+"/"+path['location'][i].split('/')[2]+"/"+path['location'][i].split('/')[3])
+        else: 
+            #project_id.append(path['location'][i].split('/')[1]+"/"+path['location'][i].split('/')[2])
+            project_id.append(path['location'][i].split('/')[2]) # for labdata
+     
+    return project_id       
+
+
+list_files = pd.read_csv("file_structure_Diego_database.txt", sep="\t", header = None , low_memory=False)
+list_files.rename(columns={0: 'location'}, inplace=True)
+
+#1. Raw data
+raw_fastq=list_files[list_files['location'].str.contains("fastq")].reset_index(drop=True)
+raw_fastq['file_name']=raw_fastq['location'].apply(lambda x: x.split("/")[len(x.split("/"))-1])
+raw_fastq['temp']=raw_fastq['file_name'].apply(lambda x: x.split(".")[len(x.split("."))-1])
+
+raw_fastq=raw_fastq[((raw_fastq['temp']=='fastq') | (raw_fastq['temp']=='fq'))] 
+raw_fastq=raw_fastq[raw_fastq['file_name'].str.contains("\.")]
+
+
+raw_fastq['Project_Type']=raw_fastq['location'].apply(lambda x: x.split("/")[0])
+raw_fastq['Project_ID']=raw_fastq['location'].apply(lambda x: x.split("/")[1])
+raw_fastq=raw_fastq[['Project_ID','Project_Type','file_name','location']]
+raw_fastq.to_csv('raw_fastq.txt',index=False,header=True,sep='\t')   
+
+#Experiments
+#2. chipseq
+chipseq=list_files[list_files['location'].str.contains("PeakCallers")].reset_index(drop=True)
+chipseq['location']=chipseq['location'].apply(lambda x: x.split("PeakCallers/")[0])+"PeakCallers/"
+chipseq=chipseq[chipseq['location'].str.contains("/PeakCallers/")].reset_index(drop=True)
+chipseq['Sample']=chipseq['location'].apply(lambda x: x.split("/")[len(x.split("/"))-3])
+
+chipseq['Project_Type']=chipseq['location'].apply(lambda x: x.split("/")[0])
+chipseq['Project_ID']=f_project_id(chipseq)
+#project_id
+chipseq=chipseq[['Project_ID','Project_Type','Sample','location']].drop_duplicates().reset_index(drop=True)
+chipseq.to_csv('chipseq.txt',index=False,header=True,sep='\t')   
+
+#alignment
+#3. star 
+star_bam=list_files[list_files['location'].str.contains("star")].reset_index(drop=True)
+star_bam['file_name']=star_bam['location'].apply(lambda x: x.split("/")[len(x.split("/"))-1])
+star_bam['Sample']=star_bam['location'].apply(lambda x: x.split("/")[len(x.split("/"))-2])
+star_bam['temp']=star_bam['file_name'].apply(lambda x: x.split(".")[len(x.split("."))-1])
+
+star_bam=star_bam[(star_bam['temp']=='bam') | (star_bam['temp']=='sam')].reset_index(drop=True) #
+star_bam=star_bam[star_bam['file_name'].str.contains("\.")].reset_index(drop=True)
+
+star_bam['Algorithm']="STAR"
+star_bam['Protocol']="RNA-seq"
+star_bam['Project_Type']=star_bam['location'].apply(lambda x: x.split("/")[0])
+star_bam['Project_ID']=f_project_id(star_bam)
+
+star_bam=star_bam[['Project_ID','Project_Type','Sample','file_name','Protocol','Algorithm','location']]
+star_bam.to_csv('star_bam.txt',index=False,header=True,sep='\t')   
+
+#4. bwa
+bwa_bam=list_files[(list_files['location'].str.contains("bwa")) | (list_files['location'].str.contains("PeakCallers"))].reset_index(drop=True)
+bwa_bam['Protocol']="ChIP-seq_Chrom-Access"
+bwa_bam['file_name']=bwa_bam['location'].apply(lambda x: x.split("/")[len(x.split("/"))-1])
+bwa_bam['Sample']=bwa_bam['location'].apply(lambda x: x.split("/")[len(x.split("/"))-2])
+bwa_bam['temp']=bwa_bam['file_name'].apply(lambda x: x.split(".")[len(x.split("."))-1])
+
+bwa_bam=bwa_bam[(bwa_bam['temp']=='bam') | (bwa_bam['temp']=='sam')].reset_index(drop=True) #
+bwa_bam=bwa_bam[bwa_bam['file_name'].str.contains("\.")].reset_index(drop=True)
+
+bwa_bam['Algorithm']="BWA"
+
+bwa_bam['Project_Type']=bwa_bam['location'].apply(lambda x: x.split("/")[0])
+bwa_bam['Project_ID']=f_project_id(bwa_bam)
+
+bwa_bam=bwa_bam[['Project_ID','Project_Type','Sample','file_name','Protocol','Algorithm','location']]
+bwa_bam.to_csv('test',index=False,header=True,sep='\t')   
+bwa_bam.to_csv('bwa_bam.txt',index=False,header=True,sep='\t')   
+
+#5. deseq
+deseq=list_files[list_files['location'].str.contains("DiffExpr")].reset_index(drop=True)
+deseq['location']=deseq['location'].apply(lambda x: x.split("DiffExpr",)[0])
+deseq['Sample']=deseq['location'].apply(lambda x: x.split("/")[len(x.split("/"))-2])
+
+#deseq['temp']=deseq['location'].apply(lambda x: x.split("DiffExpr",)[0])
+
+#deseq=deseq[-deseq['temp'].str.contains('deseq')].reset_index(drop=True)
+
+#deseq['sample']=deseq['location'].apply(lambda x: x.split("/")[len(x.split("/"))-1])
+
+#star_bam=star_bam[star_bam['temp']=='bam'].reset_index(drop=True)
+#star_bam=star_bam[star_bam['file_name'].str.contains("\.")]
+deseq['Project_Type']=deseq['location'].apply(lambda x: x.split("/")[0])
+deseq['Project_ID']=f_project_id(deseq)
+deseq=deseq[['Project_ID','Project_Type','Sample','location']].drop_duplicates().reset_index(drop=True)
+deseq.to_csv('deseq.txt',index=False,header=True,sep='\t')   
+
+#6. circexplores2
+#circexp=list_files[list_files['location'].str.contains("circexplorer2")].reset_index(drop=True)
+circexp=list_files[list_files['location'].str.contains("circ_fusion.txt")].reset_index(drop=True)
+
+circexp['file_name']=circexp['location'].apply(lambda x: x.split("/")[len(x.split("/"))-1])
+circexp['Sample']=circexp['location'].apply(lambda x: x.split("/")[len(x.split("/"))-3])
+
+circexp['Project_Type']=circexp['location'].apply(lambda x: x.split("/")[0])
+circexp['Project_ID']=f_project_id(circexp)
+circexp=circexp[['Project_ID','Project_Type','Sample','file_name','location']]
+circexp.to_csv('circexp.txt',index=False,header=True,sep='\t')   
+
+#7. htseq
+htseq=list_files[list_files['location'].str.contains(".htseq.count")].reset_index(drop=True)
+htseq=htseq[-htseq['location'].str.contains("summary")].reset_index(drop=True)
+
+htseq['file_name']=htseq['location'].apply(lambda x: x.split("/")[len(x.split("/"))-1])
+htseq['Sample']=htseq['file_name'].apply(lambda x: x.split(".")[0])
+
+htseq['Project_Type']=htseq['location'].apply(lambda x: x.split("/")[0])
+htseq['Project_ID']=f_project_id(htseq)
+htseq=htseq[['Project_ID','Project_Type','Sample','file_name','location']].drop_duplicates().reset_index(drop=True)
+htseq.to_csv('htseq.txt',index=False,header=True,sep='\t')   
+
+#8. featurecount
+featurecount=list_files[(list_files['location'].str.contains("featurecount")) & (list_files['location'].str.contains(".count"))].reset_index(drop=True)
+featurecount=featurecount[-featurecount['location'].str.contains("summary")].reset_index(drop=True)
+
+featurecount['file_name']=featurecount['location'].apply(lambda x: x.split("/")[len(x.split("/"))-1])
+featurecount['Sample']=featurecount['file_name'].apply(lambda x: x.split(".")[0])
+
+featurecount['Project_Type']=featurecount['location'].apply(lambda x: x.split("/")[0])
+featurecount['Project_ID']=f_project_id(featurecount)
+featurecount=htseq[['Project_ID','Project_Type','Sample','file_name','location']].drop_duplicates().reset_index(drop=True)
+featurecount.to_csv('featurecount.txt',index=False,header=True,sep='\t')   
+
+
+
+print "Opening mysql connection to update tables..." 
+
+db = my.connect(host="138.25.210.11",
+user="root",
+passwd="bloodBioinf",
+db="BloodGenomics_DB",
+local_infile = 1
+)
+
+#print(db)
+cursor = db.cursor()
+
+
+list_tables=['raw_fastq','chipseq','star_bam','bwa_bam','deseq','circexp','htseq','featurecount']
+for i in range(len(list_tables)):
+    table_id=list_tables[i]
+    #cursor.execute("""DROP TABLE `"""+table_id+"""`""")
+    sql_cmd=f_create_mysql_table("""DROP TABLE IF EXISTS `"""+table_id+"""`;""")
+    cursor.execute(sql_cmd)
+    
+    print "Updating table "+table_id+" ..." 
+    sql_cmd=f_create_mysql_table(table_id)
+    cursor.execute(sql_cmd)
+    sql_cmd=f_load_data_mysql(table_id+".txt")
+    cursor.execute(sql_cmd)
+    print "Complete..." 
+
+#
+print "Saving changes..." 
+db.commit()
+print "Closing connection..." 
+db.close()
+
+
+
+ 
